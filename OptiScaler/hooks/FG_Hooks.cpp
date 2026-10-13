@@ -89,6 +89,27 @@ static bool CheckForFGStatus()
     return true;
 }
 
+// See HookToDevice: with ReShade loaded by us, the device captured in hkD3D12CreateDevice is the raw one.
+// The game's command queue belongs to ReShade's proxy device, which is what Streamline/NGX must use.
+static void UseCommandQueueDevice(ID3D12CommandQueue* cq)
+{
+    if (reshadeModule == nullptr || cq == nullptr)
+        return;
+
+    ID3D12Device* device = nullptr;
+    if (cq->GetDevice(IID_PPV_ARGS(&device)) != S_OK || device == nullptr)
+        return;
+
+    if (State::Instance().currentD3D12Device != device)
+    {
+        LOG_INFO("ReShade loaded, using command queue device {:X} instead of {:X}", (size_t) device,
+                 (size_t) State::Instance().currentD3D12Device);
+        State::Instance().currentD3D12Device = device;
+    }
+
+    device->Release();
+}
+
 HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI_SWAP_CHAIN_DESC* pDesc,
                                  IDXGISwapChain** ppSwapChain)
 {
@@ -105,6 +126,8 @@ HRESULT FGHooks::CreateSwapChain(IDXGIFactory* pFactory, IUnknown* pDevice, DXGI
         LOG_ERROR("FG Feature requires D3D12 Command Queue!");
         return E_INVALIDARG;
     }
+
+    UseCommandQueueDevice(cq);
 
     if (State::Instance().currentFG == nullptr)
     {
@@ -216,6 +239,8 @@ HRESULT FGHooks::CreateSwapChainForHwnd(IDXGIFactory* pFactory, IUnknown* pDevic
         LOG_ERROR("FG Feature requires D3D12 Command Queue!");
         return E_INVALIDARG;
     }
+
+    UseCommandQueueDevice(cq);
 
     if (State::Instance().currentFG == nullptr)
     {
